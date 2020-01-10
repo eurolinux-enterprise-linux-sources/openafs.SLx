@@ -1,5 +1,5 @@
-%define afsvers 1.6.20
-%define pkgrel 257
+%define afsvers 1.6.22.3
+%define pkgrel 286
 #define plevel .z2
 
 
@@ -200,7 +200,6 @@ Source999: openafs-sl-defs.sh
 #Patch1083: openafs-1.6.5.1-viced-fix-get-statistics64-buffer-overflow.patch
 #Patch1084: openafs-1.6.10-revert-gerrit-11358.patch
 #Patch1085: openafs-1.6.10-aklog524.patch
-Patch1086: openafs-1.6.20-SA-2017-001.patch
 
 %description
 The AFS distributed filesystem.  AFS is a distributed filesystem
@@ -591,7 +590,6 @@ krb4 lookalike services.
 #patch1083 -p1 -b .viced-fix-get-statistics64-buffer-overflow
 #patch1084 -p1 -b .revert-gerrit-11358
 #patch1085 -p1 -b .aklog524
-%patch1086 -p1 -b .sa-2017-001
 
 # add some info to "rxdebug -version" output:
 sed -i s/built\ /built/ src/config/Makefile.version-NOCML.in
@@ -1441,11 +1439,20 @@ depmod -ae %{unamer} >/dev/null 2>&1 || :
 ###############################################################################
 
 %changelog
-* Wed Dec   6 2017 Stephan Wiesand <stephan wiesand desy de> 1.6.20-257.SLx
-- security update
-- patch1086 to address OPENAFS-SA-2017-001
+* Tue Apr 24 2018 Stephan Wiesand <stephan wiesand desy de> 1.6.22.3-286.SLx
+- update to release 1.6.22.3, to fix readdir() for the 7.5 kernel series
 
-* Wed Dec   8 2016 Stephan Wiesand <stephan wiesand desy de> 1.6.20-256.SLx
+* Mon Feb  5 2018 Stephan Wiesand <stephan wiesand desy de> 1.6.22.2-283.SLx
+- update to release 1.6.22.2, to fix getcwd() issues with the 7.4 kernel series
+
+* Wed Dec  6 2017 Stephan Wiesand <stephan wiesand desy de> 1.6.22-278.SLx
+- update to release 1.6.22 (security release)
+- addresses OPENAFS-SA-2017-001
+
+* Mon Aug  7 2017 Stephan Wiesand <stephan wiesand desy de> 1.6.21-274.SLx
+- update to release 1.6.21
+
+* Wed Dec  8 2016 Stephan Wiesand <stephan wiesand desy de> 1.6.20-256.SLx
 - update to security release 1.6.20
 - added RemainAfterExit=true in afs.service, to fix the case where only
   kernel threads remain after the client has started
