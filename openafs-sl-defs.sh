@@ -15,7 +15,7 @@ echo $l | grep -q '^\(4\.9[0-9]\|5\.[0-9]\|5\.1[0-9]\|5\)$' && {
     echo "%define SLrelease sl5"
 }
 
-echo $l | grep -q '^6\.[0-9]\( Beta\)\?$' && {
+echo $l | grep -q '^6\.[0-9]\( Beta\|[0-9]\)\?$' && {
     rls=6
     echo '%define SL5 0'
     echo '%define SL6 1'

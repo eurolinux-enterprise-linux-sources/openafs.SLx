@@ -1,5 +1,5 @@
-%define afsvers 1.6.23
-%define pkgrel 289
+%define afsvers 1.6.24
+%define pkgrel 290
 #define plevel .z2
 
 
@@ -1439,6 +1439,11 @@ depmod -ae %{unamer} >/dev/null 2>&1 || :
 ###############################################################################
 
 %changelog
+* Wed Oct 23 2019 Stephan Wiesand <stephan wiesand desy de> 1.6.24-290.SLx
+- update to release 1.6.24 (security release)
+- addresses OPENAFS-SA-2019-001, OPENAFS-SA-2019-002, OPENAFS-SA-2019-003
+- fix build on EL 6.10
+
 * Wed Sep 12 2018 Stephan Wiesand <stephan wiesand desy de> 1.6.23-289.SLx
 - update to release 1.6.23 (security release)
 - addresses OPENAFS-SA-2018-001, OPENAFS-SA-2018-002, OPENAFS-SA-2018-003
