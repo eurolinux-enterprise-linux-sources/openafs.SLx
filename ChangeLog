@@ -1,76 +1,626 @@
-commit 9a51d72eebc21904f290aa8f5d513abe66db6b36
-Author: Stephan Wiesand <stephan.wiesand@desy.de>
-Date:   Thu Apr 12 17:17:10 2018 +0200
+commit d77120341812164516e3d8e380c98f6be6dac9d7
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Mon Sep 10 20:36:31 2018 -0500
 
-    Make OpenAFS 1.6.22.3
+    Make OpenAFS 1.6.23
     
-    Update configure version strings for 1.6.22.3. Note that macos kext
-    can be of form XXXX.YY[.ZZ[(d|a|b|fc)NNN]] where d dev, a alpha,
-    b beta, f final candidate so we have no way to represent 1.6.22.3.
-    Switch to 1.6.23 dev 3 for macOS.
+    Update version strings for the 1.6.23 release.
     
-    Change-Id: I5ee43eea7eb19c114400e9824a148a5348ef82d6
-    Reviewed-on: https://gerrit.openafs.org/13009
-    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
-    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
-    Tested-by: Stephan Wiesand <stephan.wiesand@desy.de>
+    Change-Id: I4cbfcca4f986cd201ec3e45d61c7ad53990aede8
 
-commit 2177044e78b1d22848976afe2c14f77af3d2881c
-Author: Stephan Wiesand <stephan.wiesand@desy.de>
-Date:   Fri Apr 13 14:59:15 2018 +0200
+commit 213f5591a47e246d7964ef10d4e3adf5c0bab487
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Mon Sep 10 20:26:20 2018 -0500
 
-    Update NEWS for 1.6.22.3
+    Update NEWS for 1.6.23
     
-    Release notes for the OpenAFS 1.6.22.3 release
+    Release notes for the OpenAFS 1.6.23 security release.
     
-    Change-Id: I031b1a6d073a71de8b553d087f8c21af76ace0f0
-    Reviewed-on: https://gerrit.openafs.org/13013
-    Reviewed-by: Benjamin Kaduk <kaduk@mit.edu>
-    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
-    Tested-by: Stephan Wiesand <stephan.wiesand@desy.de>
+    Change-Id: I7c3422ca50f1a6d4f91852d31b91673c65ac95d6
 
-commit 00d12d24683081a35a9d73ba75d4003755a6905f
+commit 885c02af3761c0f2bf3350dc4beef09a92770aa7
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Tue Sep 11 10:51:01 2018 -0500
+
+    Fix typos in audit format strings
+    
+    Commit 9ebff4c6caa8b499d999cfd515d4d45eb3179769 introduced audit
+    framework support for several butc-related data types, but had
+    a typo ('$d' for '%d') in a couple of places, that was not reported
+    by compiler format-string checking.  Fix the typo to properly print
+    all the auditable data.
+    
+    (cherry picked from commit d5816fd6cd1876760a985a817dbbb3940cf3bddb)
+    
+    (cherry picked from commit 90601818205aeefd1cf99b8766a7bfd03bf9b96a)
+    
+    (cherry picked from commit 0cdb370f1813158a6dbd577e5c250bc26ac4590c)
+    
+    Change-Id: I0d1cb15d02225a8557da09ed72efbc5103e1ec1b
+
+commit 9067d543817f32deb334e20c67e071f124a42140
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Sun Sep 9 10:44:38 2018 -0500
+
+    OPENAFS-SA-2018-001 backup: use authenticated connection to butc
+    
+    Use the standard routine to pick a client security object, instead of
+    always assuming rxnull.  Respect -localauth as well as being able to
+    use the current user's tokens, but also provide a -nobutcauth argument
+    to fall back to the historical rxnull behavior (but only for the connections
+    to butc; vldb and budb connections are not affected).
+    
+    (cherry picked from commit 345ee34236c08a0a2fb3fff016edfa18c7af4b0a)
+    
+    (cherry picked from commit ed217df4b23e111d4b12e7236bdf6f8ab5575952)
+    
+    (cherry picked from commit 3f06dd4f73f7fa1f6ecbd71e9ebe2ef5c67dfebd)
+
+commit cb8b8300369cf12f1a4681010b71aa46659529bc
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Thu Sep 6 18:50:39 2018 -0500
+
+    OPENAFS-SA-2018-001 butc: require authenticated connections with -localauth
+    
+    The butc -localauth option is available to use the cell-wide key to
+    authenticate to the vlserver and buserver, which in normal deployments
+    will require incoming connections to be authenticated as a superuser.
+    In such cases, the cell-wide key is also available for use in
+    authenticating incoming connections to the butc, which would otherwise
+    have been completely unauthenticated.
+    
+    Because of the security hazards of allowing unauthenticaed inbound
+    RPCs, especially ones that manipulate backup information and are allowed
+    to initiate outboud RPCs authenticated as the superuser, default to
+    not allowing unauthenticated inbound RPCs at all.  Provide an opt-out
+    command-line argument for deployments that require this functionality
+    and have configured their network environment (firewall/etc.) appropriately.
+    
+    (cherry picked from commit 1b199eeafad6420982380ce5e858f00c528cfd13)
+    
+    (cherry picked from commit fa04588907321e8b50b64f30dcc049e60268a05a)
+    
+    Change-Id: Ib796fd4d61cc5d2e98f1b1e787f3267456b0ffe8
+
+commit 78b5be7ddd9f8b9b416c7405074253770e8354d8
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Sun Sep 9 11:49:03 2018 -0500
+
+    OPENAFS-SA-2018-001 Add auditing to butc server RPC implementations
+    
+    Make the actual implementations into helper functions, with the RPC
+    stubs calling the helpers and doing the auditing on the results, akin
+    to most other server programs in the tree.  This relies on support for
+    some additional types having been added to the audit framework.
+    
+    (cherry picked from commit c43169fd36348783b1a5a55c5bb05317e86eef82)
+    
+    (cherry picked from commit 6f8c0c8134de1b5358ec56878e350aeab31aa3cd)
+    
+    (cherry picked from commit 23f3f2e0d96e30a7bc9c355414db995df820e5ba)
+    
+    Change-Id: Icb4a9ca3cce81b088268655a648823f3e8260f0a
+
+commit ccd02a1bbb44d4c3a15d721a9d4fd8d84cd4e0ee
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Sat Sep 8 19:42:36 2018 -0500
+
+    OPENAFS-SA-2018-001 audit: support butc types
+    
+    Add support for several complex butc types to enable butc auditing.
+    
+    (cherry picked from commit 41d2dd569a365465ac47da3cd39eceba4beaeaf3)
+    
+    (cherry picked from commit 049b7eafe125d12803e848f38f18680dff31ab80)
+    
+    Change-Id: I6662f028e300afaa5e2586db1a590f9ea8ec3139
+
+commit b18e8f4a8957c5022fa91168d73b2eb7fb28e93b
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Sat Sep 8 20:35:25 2018 -0500
+
+    OPENAFS-SA-2018-001 butc: remove dummy osi_audit() routine
+    
+    This local stub was present in the original IBM import and is unused.
+    It will conflict with the real audit code once we start adding auditing
+    to the TC_ RPCs, so remove it now.
+    
+    (cherry picked from commit 50216dbbc30ed94f89bdd0e964f4891e87f28c0b)
+    
+    (cherry picked from commit 7eb650a6edd96e3c7e68f170945ddcdac8b67975)
+    
+    (cherry picked from commit cf69365f0416c58462cbea75dc17cde01f343175)
+    
+    Change-Id: Idf9d3dfa040cdd34437d1c97ce27a1225a356993
+
+commit 187cf8717cb983eeabb919b2ac189fa5505c369c
 Author: Mark Vitale <mvitale@sinenomine.net>
-Date:   Thu Mar 1 23:16:56 2018 -0500
+Date:   Fri Jul 6 03:14:19 2018 -0400
 
-    LINUX: fix RedHat 7.5 ENOTDIR issues
+    OPENAFS-SA-2018-003 rxgen: prevent unbounded input arrays
     
-    Red Hat Linux 7.5 beta introduces a new file->f_mode flag
-    FMODE_KABI_ITERATE as a means for certain in-tree filesystems to
-    indicate that they have implemented file operation iterate() instead of
-    readdir().  The kernel routine iterate_dir() tests this flag to decide
-    whether to invoke the file operation iterate() or readdir().
+    RPCs with unbounded arrays as inputs are susceptible to remote
+    denial-of-service (DOS) attacks.  A malicious client may submit an RPC
+    request with an arbitrarily large array, forcing the server to expend
+    large amounts of network bandwidth, cpu cycles, and heap memory to
+    unmarshal the input.
     
-    The OpenAFS configure script detects that the file operation iterate()
-    is available under RH7.5 and so implements iterate() as
-    afs_linux_readdir().  However, since OpenAFS does not set
-    FMODE_KABI_ITERATE on any of its files, the kernel's iterate_dir() will
-    not invoke iterate() for any OpenAFS files.  OpenAFS has also not
-    implemented readdir(), so iterate_dir() must return -ENOTDIR.
+    Instead, issue an error message and stop rxgen when it detects an RPC
+    defined with an unbounded input array.  Thus we will detect the problem
+    at build time and prevent any future unbounded input arrays.
     
-    Instead, modify OpenAFS to fall back to readdir() in this case.
+    (cherry picked from commit a4c1d5c48deca2ebf78b1c90310b6d56b3d48af6)
     
-    Reviewed-on: https://gerrit.openafs.org/12935
-    Tested-by: BuildBot <buildbot@rampaginggeek.com>
-    Reviewed-by: Benjamin Kaduk <kaduk@mit.edu>
-    (cherry picked from commit c818f86b79a636532d396887d4f22cc196c86288)
+    (cherry picked from commit 2cf5cfa8561047e855fed9ab35d1a041e309e39a)
     
-    Reviewed-on: https://gerrit.openafs.org/12950
-    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
-    Tested-by: BuildBot <buildbot@rampaginggeek.com>
-    Reviewed-by: Benjamin Kaduk <kaduk@mit.edu>
-    (cherry picked from commit b73863b8d2669830a17c097abf1d846d0108a2f4)
+    (cherry picked from commit 289a5643e7af399b3e99eb33d50b6c602e442a02)
     
-    Reviewed-on: https://gerrit.openafs.org/12971
-    Tested-by: BuildBot <buildbot@rampaginggeek.com>
-    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
-    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
-    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
-    Tested-by: Stephan Wiesand <stephan.wiesand@desy.de>
-    (cherry picked from commit a22ad3923d356c49a10e905248066b69be01b8c2)
+    Change-Id: If5222aab9ce700ba8d9520e5e2e81e66e1b87fd1
+
+commit 6cbb7d9d57e5f7e0090b538c92b3eafe9c2656b0
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Fri Jul 6 03:21:26 2018 -0400
+
+    OPENAFS-SA-2018-003 volser: prevent unbounded input to various AFSVol* RPCs
     
-    Change-Id: I5f4d301b4e865a0880513e0b4e027c41659b4f15
-    Reviewed-on: https://gerrit.openafs.org/13012
-    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
-    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
-    Tested-by: Stephan Wiesand <stephan.wiesand@desy.de>
+    Several AFSVol* RPCs are defined with an unbounded XDR "string" as
+    input.
+    
+    RPCs with unbounded arrays as inputs are susceptible to remote
+    denial-of-service (DOS) attacks.  A malicious client may submit an
+    AFSVol* request with an arbitrarily large string, forcing the volserver
+    to expend large amounts of network bandwidth, cpu cycles, and heap
+    memory to unmarshal the input.
+    
+    Instead, give each input "string" an appropriate size.
+    Volume names are inherently capped to 32 octets (including trailing NUL)
+    by the protocol, but there is less clearly a hard limit on partition names.
+    The Vol_PartitionInfo{,64} functions accept a partition name as input and
+    also return a partition name in the output structure; the output values
+    have wire-protocol limits, so larger values could not be retrieved by clients,
+    but for denial-of-service purposes, a more generic PATH_MAX-like value seems
+    appropriate.  We have several varying sources of such a limit in the tree, but
+    pick 4k as the least-restrictive.
+    
+    [kaduk@mit.edu: use a larger limit for pathnames and expand on PATH_MAX in
+    commit message]
+    
+    (cherry picked from commit 8b92d015ccdfcb70c7acfc38e330a0475a1fbe28)
+    
+    (cherry picked from commit fe41fa565be6e325da75f3e9b8fbdac2c521b027)
+    
+    (cherry picked from commit 39b675e243be70237ba9460b49b461c128aedffd)
+    
+    Change-Id: Idad0b0abf582b356042245398e1317a610ff321e
+
+commit 35240e33317658a396cd3da994b5d20a71f4abc3
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Fri Jul 6 01:09:53 2018 -0400
+
+    OPENAFS-SA-2018-003 volser: prevent unbounded input to AFSVolForwardMultiple
+    
+    AFSVolForwardMultiple is defined with an input parameter that is defined
+    to XDR as an unbounded array of replica structs:
+      typedef replica manyDests<>;
+    
+    RPCs with unbounded arrays as inputs are susceptible to remote
+    denial-of-service (DOS) attacks.  A malicious client may submit an
+    AFSVolForwardMultiple request with an arbitrarily large array, forcing
+    the volserver to expend large amounts of network bandwidth, cpu cycles,
+    and heap memory to unmarshal the input.
+    
+    Even though AFSVolForwardMultiple requires superuser authorization, this
+    attack is exploitable by non-authorized actors because XDR unmarshalling
+    happens long before any authorization checks can occur.
+    
+    Add a bounding constant (NMAXNSERVERS 13) to the manyDests input array.
+    This constant is derived from the current OpenAFS vldb implementation, which
+    is limited to 13 replica sites for a given volume by the layout (size) of the
+    serverNumber, serverPartition, and serverFlags fields.
+    
+    [kaduk@mit.edu: explain why this constant is used]
+    
+    (cherry picked from commit 97b0ee4d9c9d069e78af2e046c7987aa4d3f9844)
+    
+    (cherry picked from commit fac3749f0d180e0ca229326c0e8568a60e17d3e9)
+    
+    (cherry picked from commit ea30e64d1b2153f51a83069f3471356553a27a2b)
+    
+    Change-Id: Ib2e5d4cc660e0a278b9dbd10ac2db656239e1302
+
+commit b8142be4b4642a37500081ef459544cdb2091218
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Thu Jul 5 23:51:37 2018 -0400
+
+    OPENAFS-SA-2018-003 budb: prevent unbounded input to BUDB_SaveText
+    
+    BUDB_SaveText is defined with an input parameter that is defined to XDR
+    as an unbounded array of chars:
+       typedef char charListT<>;
+    
+    RPCs with unbounded arrays as inputs are susceptible to remote
+    denial-of-service (DOS) attacks.  A malicious client may submit a
+    BUDB_SaveText request with an arbitrarily large array, forcing the budb
+    server to expend large amounts of network bandwidth, cpu cycles, and
+    heap memory to unmarshal the input.
+    
+    Modify the XDR definition of charListT so it is bounded.  This typedef
+    is shared (as an OUT parameter) by BUDB_GetText and BUDB_DumpDB, but
+    fortunately all in-tree callers of the client routines specify the same
+    maximum length of 1024.
+    
+    Note: However, SBUDB_SaveText server implementation seems to allow for up to
+    BLOCK_DATA_SIZE (2040) = BLOCKSIZE (2048) - sizeof(struct blockHeader)
+    (8), and it's unknown if any out-of-tree callers exist.  Since we do not need a
+    tight bound in order to avoid the DoS, use a somewhat higher maximum of
+    4096 bytes to leave a safety margin.
+    
+    [kaduk@mit.edu: bump the margin to 4096; adjust commit message to match]
+    
+    (cherry picked from commit 124445c0c47994f5e2efef30e86337c3c8ebc93f)
+    
+    (cherry picked from commit 87f199c14199afa29f75bb336383564f0fb4548a)
+    
+    (cherry picked from commit c5c3a858b21eaaabda46e1dffdea038fa234d657)
+    
+    Change-Id: I6802e76a5f6e39e31ece66d1ff00ed11b47b6c36
+
+commit e3840eb1a23b36aed395337b2fa774c079f3c092
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Thu Jul 5 21:11:30 2018 -0400
+
+    OPENAFS-SA-2018-003 vlserver: prevent unbounded input to VL_RegisterAddrs
+    
+    VL_RegisterAddrs is defined with an input argument of type bulkaddrs,
+    which is defined to XDR as an unbounded array of afs_uint32 (IPv4 addresses):
+      typedef afs_uint32 bulkaddrs<>
+    
+    The <> with no value instructs rxgen to build client and server stubs
+    that allow for a maximum size of "~0u" or 0xFFFFFFFF.
+    
+    Ostensibly the bulkaddrs array is unbounded to allow it to be shared
+    among VL_RegisterAddrs, VL_GetAddrs, and VL_GetAddrsU.  The VL_GetAddrs*
+    RPCs use bulkaddrs as an output array with a maximum size of MAXSERVERID
+    (254). VL_RegisterAddrss uses bulkaddrs as an input array, with a
+    nominal size of VL_MAXIPADDRS_PERMH (16).
+    
+    However, RPCs with unbounded array inputs are susceptible to remote
+    denial-of-service attacks.  That is, a malicious client may send a
+    VL_RegisterAddrs request with an arbitrarily long array, forcing the
+    vlserver to expend large amounts of network bandwidth, cpu cycles, and
+    heap memory to unmarshal the argument.  Even though VL_RegisterAddrs
+    requires superuser authorization, this attack is exploitable by
+    non-authorized actors because XDR unmarshalling happens long before any
+    authorization checks can occur.
+    
+    Because all uses of the type that our implementation support have fixed
+    bounds on valid data (whether input or output), apply an arbitrary
+    implementation limit (larger than any valid structure would be), to
+    prevent this class of attacks in the XDR decoder.
+    
+    [kaduk@mit.edu: limit the bulkaddrs type instead of introducing a new type]
+    
+    (cherry picked from commit 7629209219bbea3f127b33be06ac427ebc3a559e)
+    
+    (cherry picked from commit 4218dc0a2db75c740d1d31966e672f85ad7999bd)
+    
+    (cherry picked from commit 38f401ae7e0e88fb65b651125a2c8a723db1e071)
+    
+    Change-Id: Ib0798af007af14a2a91ae280c0f28838f33d1a65
+
+commit 4dd98168f0fc851716d30fc1e2839f11304a4d04
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Thu Aug 30 10:38:56 2018 -0500
+
+    OPENAFS-SA-2018-002 butc: Initialize OUT scalar value
+    
+    In STC_ReadLabel, the interaction with the tape device is
+    synchronous, so there is no need to allocate a task ID for status
+    monitoring.  However, we do need to initialize the output value,
+    to avoid writing stack garbage on the wire.
+    
+    (cherry picked from commit f5a80115f8f7f9418287547f0fc7fdb13d936f00)
+    
+    (cherry picked from commit 418b2ab56c60e44375df31a3a8f77461d577a5ff)
+    
+    (cherry picked from commit babbb2824a5e3d6210b9079ab08f8771ac6ef892)
+    
+    Change-Id: Ie18bbe7542a23d2ce952cfcd5288ee0aa43bb71f
+
+commit ab8a6ab1230f5274630e0d0b9e35a778b6d9f79b
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 06:01:16 2018 -0400
+
+    OPENAFS-SA-2018-002 ubik: prevent VOTE_Debug, VOTE_XDebug information leak
+    
+    VOTE_Debug and VOTE_XDebug (udebug) both leave a single field
+    uninitialized if there is no current transaction.  This leaks the memory
+    contents of the ubik server over the wire.
+    
+    struct ubik_debug
+    - 4 bytes in member writeTrans
+    
+    In common code to both RPCs, ensure that writeTrans is always
+    initialized.
+    
+    [kaduk@mit.edu: switch to memset]
+    
+    (cherry picked from commit 7a7c1f751cdb06c0d95339c999b2c035c2d2168b)
+    
+    (cherry picked from commit 0ee86cc3f986365df9de21ede5735cc1f40db7e5)
+    
+    (cherry picked from commit 9db5fcf460988b605ba8ba7078b9c8d702aba370)
+    
+    Change-Id: I1c9fc9a6a8bb8aed04f814e4da041af3f49a7401
+
+commit 973bba24a6d2f419680873f4133dbad8cd37ce9f
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 05:26:21 2018 -0400
+
+    OPENAFS-SA-2018-002 kaserver: prevent KAM_ListEntry information leak
+    
+    KAM_ListEntry (kas list) does not initialize its output correctly.  It
+    leaks kaserver memory contents over the wire:
+    
+    struct kaindex
+    - up to 64 bytes for member name
+    - up to 64 bytes for member instance
+    
+    Initialize the buffer.
+    
+    [kaduk@mit.edu: move initialization to top of server routine]
+    
+    (cherry picked from commit b604ee7add7be416bf20973422a041e913d20761)
+    
+    (cherry picked from commit c912830e9c82d91bccf85018ef1e6a75edc410c4)
+    
+    (cherry picked from commit 04fb009f15b75aca8e62675972ce23526a62ba80)
+    
+    Change-Id: I613b1f46b913d4208bac15eb92274127da14e9c9
+
+commit e573d36b212192b04235dac24f709e7d5784f904
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 05:12:32 2018 -0400
+
+    OPENAFS-SA-2018-002 butc: prevent TC_DumpStatus, TC_ScanStatus information leaks
+    
+    TC_ScanStatus (backup status) and TC_GetStatus (internal backup status
+    watcher) do not initialize their output buffers.  They leak memory
+    contents over the wire:
+    
+    struct tciStatusS
+    - up to 64 bytes in member taskName (TC_MAXNAMELEN 64)
+    - up to 64 bytes in member volumeName  "
+    
+    Initialize the buffers.
+    
+    [kaduk@mit.edu: move initialization to top of server routines]
+    
+    (cherry picked from commit be0142707ca54f3de99c4886530e7ac9f48dd61c)
+    
+    (cherry picked from commit 43b3efd4f8cd3227b2b24ff673adeb834f6a3f0b)
+    
+    (cherry picked from commit a41b75a13b9a96a929fa69db43fbc4ca071ee717)
+    
+    Change-Id: Ibe35ca06eb663399f0b9e14d7487d91553cd67c8
+
+commit bd86cbcfd95f30bc10dc703a96ed54f516bb4b99
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 05:00:25 2018 -0400
+
+    OPENAFS-SA-2018-002 butc: prevent TC_ReadLabel information leak
+    
+    TC_ReadLabel (backup readlabel) does not initialize its output buffer
+    completely.  It leaks butc memory contents over the wire:
+    
+    struct tc_tapeLabel
+    - up to 32 bytes from member afsname (TC_MAXTAPELEN 32)
+    - up to 32 bytes from member pname (TC_MAXTAPELEN 32)
+    
+    Initialize the buffer.
+    
+    [kaduk@mit.edu: move initialization to the RPC stub]
+    
+    (cherry picked from commit 52f4d63148323e7d605f9194ff8c1549756e654b)
+    
+    (cherry picked from commit b7e53b9e9706d63215a1804ed9eca30d69461f03)
+    
+    (cherry picked from commit 3e0294543d4f4ab58694e1aca393b961f05d7c8f)
+    
+    Change-Id: I4e8ab1b94d36e9904a9505cd7f0e97cc6fb3a40f
+
+commit 5c6589b395e35e54f8e7c583ea4d87826a854fba
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 04:39:44 2018 -0400
+
+    OPENAFS-SA-2018-002 budb: prevent BUDB_* information leaks
+    
+    The following budb RPCs do not initialize their output correctly.
+    This leaks buserver memory contents over the wire:
+    
+    BUDB_FindLatestDump (backup dump)
+    BUDB_FindDump (backup volrestore, diskrestore, volsetrestore)
+    BUDB_GetDumps (backup dumpinfo)
+    BUDB_FindLastTape (backup dump)
+    
+    struct budb_dumpEntry
+    - up to 32 bytes in member volumeSetName
+    - up to 256 bytes in member dumpPath
+    - up to 32 bytes in member name
+    - up to 32 bytes in member tape.tapeServer
+    - up to 32 bytes in member tape.format
+    - up to 256 bytes in member dumper.name
+    - up to 128 bytes in member dumper.instance
+    - up to 256 bytes in member dumper.cell
+    
+    Initialize the buffer in common routine FillDumpEntry.
+    
+    (cherry picked from commit e96771471134102d3879a0ac8b2c4ef9d91a61b8)
+    
+    (cherry picked from commit 6f26a945adeca87b669282eed0eaca3dca0a1423)
+    
+    (cherry picked from commit b4543ae2331fae6d70c067d86d20bfbc8d509468)
+    
+    Change-Id: I713f967eebc1286764b9658ff4ddccb65f456480
+
+commit c72abcde2c6fcafc9ab940a74f2384a159eaee98
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 03:56:24 2018 -0400
+
+    OPENAFS-SA-2018-002 afs: prevent RXAFSCB_TellMeAboutYourself information leak
+    
+    RXAFSCB_TellMeAboutYourself does not completely initialize its output
+    buffers.  This leaks kernel memory over the wire:
+    
+    struct interfaceAddr
+    Unix cache manager (libafs)
+    - up to 124 bytes in array addr_in ((AFS_MAX_INTERFACE_ADDR 32 * 4) - 4))
+    - up to 124 bytes in array subnetmask   "
+    - up to 124 bytes in array mtu          "
+    
+    Windows cache manager
+    - 64 bytes in array addr_in ((AFS_MAX_INTERFACE_ADDR 32 - CM_MAXINTERFACE_ADDR 16)* 4)
+    - 64 bytes in array subnetmask  "
+    - 64 bytes in array mtu         "
+    
+    The following implementations of SRXAFSCB_TellMeAboutYourself are not susceptible:
+    - fsprobe
+    - libafscp
+    - xstat_fs_test
+    
+    Initialize the buffer.
+    
+    (cherry picked from commit 211b6d6a4307006da1467b3be46912a3a5d7b20b)
+    
+    (cherry picked from commit a6557ffa64d8fab3526c4f89629dcbb965a27780)
+    
+    (cherry picked from commit 0dbbcc9ac62425618a3a3a28ee05eba2507f6efd)
+    
+    Change-Id: Ic977c8a473df12f64d2865cd68f1f42744b57d9e
+
+commit 283b950ed53c3c248078c9aaab10227de539b06d
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 03:47:41 2018 -0400
+
+    OPENAFS-SA-2018-002 afs: prevent RXAFSCB_GetLock information leak
+    
+    RXAFSCB_GetLock (cmdebug) does not correctly initialize its output.
+    This leaks kernel memory over the wire:
+    
+    struct AFSDBLock
+    - up to 14 bytes for member name (16 - '<cellname>\0')
+    
+    Initialize the buffer.
+    
+    (cherry picked from commit b52eb11a08f2ad786238434141987da27b81e743)
+    
+    (cherry picked from commit 3dea4adaa356b7eed40b6162c106c5e90690f5a1)
+    
+    (cherry picked from commit f0c4f8d899214bf405e809be813be4d5be125ad8)
+    
+    Change-Id: I3935968bacb8e063fd1fdd2fc52efd2258a5eb99
+
+commit 6cdfce3c9a5712a6a3088c1f3693a6b782771375
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 03:37:37 2018 -0400
+
+    OPENAFS-SA-2018-002 ptserver: prevent PR_ListEntries information leak
+    
+    PR_ListEntries (pts listentries) does not properly initialize its output
+    buffers.  This leaks ptserver memory over the wire:
+    
+    struct prlistentries
+    - up to 62 bytes for each entry name (PR_MAXNAMELEN 64 - 'a\0')
+    
+    Initialize the buffer, and remove the now redundant memset for the
+    reserved fields.
+    
+    (cherry picked from commit 9d1aeb5d761581a35bef2042e9116b96e9ae3bf5)
+    
+    (cherry picked from commit e19ad4cdde463d2bbb4b815525da992bd5fc2648)
+    
+    (cherry picked from commit 7ee25861685a4f56b304627ca2a0dbfed179646d)
+    
+    Change-Id: I42d32876ddf8fa98744620fdf75b4e0783b93aba
+
+commit c67fe473f7a8710c2cebbcc4d4b767ba152342f0
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 03:00:02 2018 -0400
+
+    OPENAFS-SA-2018-002 volser: prevent AFSVolMonitor information leak
+    
+    AFSVolMonitor (vos status) does not properly initialize its output
+    buffers.  This leaks information from volserver memory:
+    
+    struct transDebugInfo
+    - up to 29 bytes in member lastProcName (30-'\0')
+    - 16 bytes in members readNext, tranmitNext, lastSendTime,
+      lastReceiveTime
+    
+    Initialize the buffers.  This must be done on a per-buffer basis inside
+    the loop, since realloc is used to expand the storage if needed,
+    and there is not a standard realloc API to zero the newly allocated storage.
+    
+    [kaduk@mit.edu: update commit message]
+    
+    (cherry picked from commit 26924fd508b21bb6145e77dc31b6cd0923193b72)
+    
+    (cherry picked from commit 2d22756de7af2c72b8aca6969825f8e921f01d6c)
+    
+    (cherry picked from commit 37cbe68577d39241a2d5a1fe75e8a0490516dfc4)
+    
+    Change-Id: I1eab9e35207fed5d151c70962c00b6fa8ac7da58
+
+commit 4279e1f18026c3e8a38461da612902829484acc5
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Tue Jun 26 02:33:05 2018 -0400
+
+    OPENAFS-SA-2018-002 volser: prevent AFSVolPartitionInfo(64) information leak
+    
+    AFSVolPartitionInfo and AFSVolPartitionInfo64 (vos partinfo) do not
+    properly initialize their reply buffers.  This leaks the contents of
+    volserver memory over the wire:
+    
+    AFSVolPartitionInfo (struct diskPartition)
+    - up to 24 bytes in member name (32-'/vicepa\0'))
+    - up to 12 bytes in member devName (32-'/vicepa/Lock/vicepa\0'))
+    
+    AFSVolPartitionInfo64 (struct diskPartition64)
+    - up to 248 bytes in member name (256-'/vicepa\0'))
+    - up to 236 bytes in member devName (256-'/vicepa/Lock/vicepa\0')
+    
+    Initialize the output buffers.
+    
+    [kaduk@mit.edu: move memset to top-level function scope of RPC handlers]
+    
+    (cherry picked from commit 76e62c1de868c2b2e3cc56a35474e15dc4cc1551)
+    
+    (cherry picked from commit 28edf734db08d3a8285e89d9d78aa21db726e4c7)
+    
+    (cherry picked from commit f1c9c0160e364b4935fbb758890fcf5dc0edad4a)
+    
+    Change-Id: I48348b326f0933a0fcb556425f085abad36d3bea
+
+commit 50ba59fb4404af93c58e095b57f1d33de8b05899
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Mon Jun 25 18:03:12 2018 -0400
+
+    OPENAFS-SA-2018-002 ptserver: prevent PR_IDToName information leak
+    
+    SPR_IDToName does not completely initialize the return array of names,
+    and thus leaks information from ptserver memory:
+    
+    - up to 62 bytes per requested id (PR_MAXNAMELEN 64 - 'a\0')
+    
+    Use calloc to ensure that all memory sent on the wire is initialized,
+    preventing the information leak.
+    
+    [kaduk@mit.edu: switch to calloc; update commit message]
+    
+    (cherry picked from commit 70b0136d552a0077d3fae68f3aebacd985abd522)
+    
+    (cherry picked from commit c8c8682bb0e84ee5289fac3063119ae524773f61)
+    
+    (cherry picked from commit 40343287fbca6f4b1098f5b60ef9ff5416376b08)
+    
+    Change-Id: I793ccc2f3595344e72e9b4ba948a2266f1c4c0a5

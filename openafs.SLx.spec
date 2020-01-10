@@ -1,5 +1,5 @@
-%define afsvers 1.6.22.3
-%define pkgrel 286
+%define afsvers 1.6.23
+%define pkgrel 289
 #define plevel .z2
 
 
@@ -1439,6 +1439,10 @@ depmod -ae %{unamer} >/dev/null 2>&1 || :
 ###############################################################################
 
 %changelog
+* Wed Sep 12 2018 Stephan Wiesand <stephan wiesand desy de> 1.6.23-289.SLx
+- update to release 1.6.23 (security release)
+- addresses OPENAFS-SA-2018-001, OPENAFS-SA-2018-002, OPENAFS-SA-2018-003
+
 * Tue Apr 24 2018 Stephan Wiesand <stephan wiesand desy de> 1.6.22.3-286.SLx
 - update to release 1.6.22.3, to fix readdir() for the 7.5 kernel series
 
