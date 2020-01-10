@@ -1,0 +1,12 @@
+[Unit]
+Description=AFS Server Service
+After=syslog.target network.target
+
+[Service]
+EnvironmentFile=-/etc/sysconfig/.afs-server.generated
+ExecStartPre=/etc/rc.d/init.d/afs-server prepare
+ExecStart=/usr/afs/bin/bosserver -nofork $BOSSERVER_OPTIONS
+ExecStop=/usr/bin/bos shutdown localhost -wait -localauth
+
+[Install]
+WantedBy=multi-user.target

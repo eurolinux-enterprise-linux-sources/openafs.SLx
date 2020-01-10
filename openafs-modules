@@ -1,0 +1,296 @@
+#!/bin/bash
+#
+# openafs-modules - determine which modules are compatible with installed
+#                   kernels and set up the symlinks in /lib/modules/*/updates.
+#
+# Changelog:
+#
+# 2013-02-26   several fixes; do less unnecessary work
+# 2013-02-24   derived from /sbin/weak-modules from module-init-tools-3.9-20.el6
+
+unset LANG LC_ALL LC_COLLATE
+
+tmpdir=$(mktemp -td ${0##*/}.XXXXXX)
+trap "rm -rf $tmpdir" EXIT
+unset ${!changed_modules_*}
+
+# doit:
+# A wrapper used whenever we're going to perform a real operation.
+doit() {
+    [ -n "$verbose" ] && echo "$@"
+    [ -n "$dry_run" ] || "$@"
+}
+
+# read_modules_list:
+# Read in a list of modules from standard input. Convert the filenames into
+# absolute paths and compute the kernel release for each module (either using
+# the modinfo section or through the absolute path).
+read_modules_list() {
+    local IFS=$'\n'
+    modules=($(cat))
+
+    for ((n = 0; n < ${#modules[@]}; n++)); do
+        if [ ${modules[n]:0:1} != '/' ]; then
+            modules[n]="$PWD/${modules[n]}"
+        fi
+        if [ -f "${modules[n]}" ]; then
+            module_krels[n]=$(krel_of_module ${modules[n]})
+        else
+            # Try to extract the kernel release from the path
+            set -- "${modules[n]#/lib/modules/}"
+            module_krels[n]=${1%%/*}
+        fi
+    done
+}
+
+# krel_of_module:
+# Compute the kernel release of a module.
+krel_of_module() {
+    declare module=$1
+    /sbin/modinfo -F vermagic "$module" | awk '{print $1}'
+}
+
+# module_is_compatible:
+# Determine if a module is compatible with a particular kernel release. Also
+# include any symbol deps that might be introduced by other external kmods.
+module_is_compatible() {
+    declare module=$1 krel=$2 module_krel=$(krel_of_module "$module")
+
+    if [ ! -e "$tmpdir/all-symvers-$krel-$module_krel" ]; then
+        # Symbols exported by the "new" kernel
+        if [ ! -e $tmpdir/symvers-$krel ]; then
+            if [ -e /boot/symvers-$krel.gz ]; then
+                zcat /boot/symvers-$krel.gz \
+                | sed -r -ne 's:^(0x[0]*[0-9a-f]{8}\t[0-9a-zA-Z_]+)\t.*:\1:p'
+            fi > $tmpdir/symvers-$krel
+        fi
+
+        sort -u $tmpdir/symvers-$krel \
+        > "$tmpdir/all-symvers-$krel-$module_krel"
+    fi
+
+    # If the module does not have modversions enabled, $tmpdir/modvers
+    # will be empty.
+    /sbin/modprobe --dump-modversions "$module" \
+    | sed -r -e 's:^(0x[0]*[0-9a-f]{8}\t.*):\1:' \
+    | sort -u \
+    > $tmpdir/modvers
+
+    # Only include lines of the second file in the output that don't
+    # match lines in the first file. (The default separator is
+    # <space>, so we are matching the whole line.)
+    join -j 1 -v 2 $tmpdir/all-symvers-$krel-$module_krel \
+                   $tmpdir/modvers > $tmpdir/join
+
+    # For openafs: find the X in 2.6.32-X[.y.z].el6 for kernel and module.
+    declare KREL=${krel#*-}
+    KREL=${KREL%%.*}
+    declare MREL=${module_krel#*-}
+    MREL=${MREL%%.*}
+
+    if [ ! -s $tmpdir/modvers ]; then
+        echo "Warning: Module ${module##*/} from kernel $module_krel has no" \
+             "modversions, so it cannot be reused for kernel $krel" >&2
+    elif [ -s $tmpdir/join ]; then
+        [ -n "$verbose" ] &&
+        echo "Module ${module##*/} from kernel $module_krel is not compatible" \
+             "with kernel $krel in symbols:" $(sed -e 's:.* ::' $tmpdir/join)
+    elif [ ${MREL} -ne ${KREL} ]; then
+        [ -n "$verbose" ] &&
+        echo "Module ${module##*/} from kernel $module_krel is not compatible" \
+             "with kernel $krel (different minor SL release)"
+    else
+        [ -n "$verbose" ] &&
+        echo "Module ${module##*/} from kernel $module_krel is compatible" \
+             "with kernel $krel"
+        return 0
+    fi
+    return 1
+}
+
+usage() {
+    echo "Usage: ${0##*/} [options] {--add-modules|--remove-modules}"
+    echo "${0##*/} [options] {--add-kernel|--remove-kernel} {kernel-release}"
+    cat <<'EOF'
+--add-modules
+        Add a list of modules read from standard input. Create
+        symlinks in compatible kernel's updates/ directory.
+        The list of modules is read from standard input.
+
+--remove-modules
+        Remove compatibility symlinks from updates/ directories
+        for a list of modules.  The list of modules is read from
+        standard input. Optionally specify --delete-modules to
+        prevent weak-modules from attempting to locate any
+        compatible modules to replace those being removed.
+
+--verbose
+        Print the commands executed.
+
+--dry-run
+        Do not create/remove any files.
+EOF
+    exit $1
+}
+
+# module_has_changed:
+# Mark if an actual change occured that we need to deal with later by calling
+# depmod against the affected kernel.
+module_has_changed() {
+
+    declare krel=$1
+
+    eval "changed_modules_${krel//[^a-zA-Z0-9]/_}=$krel"
+}
+
+# add_modules:
+# Read in a list of modules from stdinput and process them for compatibility
+# with installed kernels under /lib/modules.
+add_modules() {
+    read_modules_list || exit 1
+    if [ ${#modules[@]} -gt 0 ]; then
+        for krel in $(ls /lib/modules/); do
+            [ -e "/boot/symvers-$krel.gz" ] || continue
+            for ((n = 0; n < ${#modules[@]}; n++)); do
+                module="${modules[n]}"
+                module_krel="${module_krels[n]}"
+                case "$module" in
+                /lib/modules/$krel/*)
+                    # Module was built against this kernel
+                    module_has_changed $krel
+                    continue ;;
+                esac
+
+		# Module may also serve as an update built against another
+		# kernel. We need to create symlinks for compatible kernels
+		# under /lib/modules and rerun depmod for those.
+
+		subpath=`echo $module | sed -nre "s:/lib/modules/$module_krel/([^/]*)/(.*):\2:p"`
+                weak_module="/lib/modules/$krel/updates/${subpath#/}"
+
+                if module_is_compatible $module $krel; then
+                    # Module was built against another kernel
+		    module_has_changed $krel
+
+		    doit mkdir -p $(dirname $weak_module)
+		    doit ln -sf $module $weak_module
+                fi
+            done
+        done
+    fi
+}
+
+# remove_modules:
+# Read in a list of modules from stdinput and process them for removal.
+remove_modules() {
+
+    read_modules_list || exit 1
+    if [ ${#modules[@]} -gt 0 ]; then
+
+	# Hunt for all known users of this module in /lib/modules and remove them.
+
+        krels=($(ls /lib/modules/))
+        for krel in "${krels[@]}"; do
+            [ -e "/boot/symvers-$krel.gz" ] || continue
+            for ((n = 0; n < ${#modules[@]}; n++)); do
+                module="${modules[n]}"
+                module_krel="${module_krels[n]}"
+                subpath="${module#/lib/modules/$module_krel/kernel}"
+                weak_module="/lib/modules/$krel/updates/${subpath#/}"
+                if [ "$module" == "`readlink $weak_module`" ]; then
+  		    # Module is going to be removed, run depmod.
+		    module_has_changed $krel
+
+                    [ -n "$verbose" ] && echo \
+"Removing compatible module ${module##*/} from kernel $krel"
+                    doit rm -f "$weak_module"
+                    doit rmdir --parents --ignore-fail-on-non-empty \
+                               "$(dirname "$weak_module")"
+                fi
+            done
+        done
+    fi
+}
+
+# clean_up:
+# Hunt for dangling links, and links for kernels no longer present
+clean_up() {
+
+    krels=($(ls /lib/modules/))
+    for krel in "${krels[@]}"; do
+	weak_module=/lib/modules/$krel/updates/fs/openafs/openafs.ko
+	[ -L "$weak_module" ] || continue
+	[ -e "$weak_module" -a -e "/boot/symvers-$krel.gz" ] && continue
+        [ -n "$verbose" ] && echo "Removing leftover openafs.ko symlink from kernel $krel"w
+        doit rm -f "$weak_module"
+        doit rmdir --parents --ignore-fail-on-non-empty \
+                   "$(dirname "$weak_module")"
+
+        [ -e "/boot/symvers-$krel.gz" ] || continue
+	module_has_changed $krel
+    done
+}
+
+################################################################################
+################################## MAIN GUTS ###################################
+################################################################################
+
+options=`getopt -o h --long help,add-modules,remove-modules,clean-up \
+                     --long dry-run,verbose -- "$@"`
+
+[ $? -eq 0 ] || usage 1
+
+eval set -- "$options"
+
+while :; do
+    case "$1" in
+    --add-modules)
+        do_add_modules=1
+        ;;
+    --remove-modules)
+        do_remove_modules=1
+        ;;
+    --clean-up)
+       do_clean_up=1
+       ;;
+    --dry-run)
+        dry_run=1
+        ;;
+    --verbose)
+        verbose=1
+        ;;
+    -h|--help)
+        usage 0
+        ;;
+    --)
+        shift
+        break
+        ;;
+    esac
+    shift
+done
+
+if [ -n "$do_add_modules" ]; then
+	add_modules
+
+elif [ -n "$do_remove_modules" ]; then
+	remove_modules
+
+elif [ -n "$do_clean_up" ]; then
+	clean_up
+
+else
+	usage 1
+fi
+
+################################################################################
+###################### CLEANUP POST ADD/REMOVE MODULE ##########################
+################################################################################
+
+# run depmod as needed
+for krel in ${!changed_modules_*}; do
+    krel=${!krel}
+
+    doit /sbin/depmod -ae -F /boot/System.map-$krel $krel
+done
+

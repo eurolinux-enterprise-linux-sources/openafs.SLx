@@ -1,0 +1,10 @@
+# Cell Aliases are meant to act like symlinks like "/afs/openafs.org -> oao"
+# in root.afs, so sites relying on such a link for their cell can use dynroot.
+# These aliases are set with "fs newalias", or read from
+# /usr/vice/etc/CellAlias
+#
+# Formating for /usr/vice/etc/CellAlias is in the form
+# <target> <alias>
+# an example would be
+# fnal.gov/common/usr usr
+

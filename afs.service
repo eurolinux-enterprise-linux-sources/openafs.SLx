@@ -1,0 +1,22 @@
+[Unit]
+Description=AFS Client Service
+After=syslog.target network.target
+
+[Service]
+Type=forking
+RemainAfterExit=true
+EnvironmentFile=/etc/sysconfig/.afs.generated
+ExecStartPre=/etc/rc.d/init.d/afs prepare
+ExecStartPre=/sbin/modprobe openafs
+ExecStart=/usr/vice/etc/afsd $AFSD_OPTIONS
+# it will exit 1 after umount /afs
+SuccessExitStatus=0 1
+ExecStartPost=/bin/sh -c ${AFS_POST_INIT}
+ExecStop=/usr/vice/etc/killafs TERM
+ExecStop=/usr/vice/etc/killafs KILL
+ExecStop=/bin/umount /afs
+ExecStop=/sbin/modprobe -r openafs
+KillMode=none
+
+[Install]
+WantedBy=multi-user.target remote-fs.target

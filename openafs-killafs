@@ -1,0 +1,24 @@
+#!/bin/sh
+#
+# kill all processes using AFS with signal $1
+# referenced from the OpenAFS init script
+#
+# http://www.tu-chemnitz.de/urz/afs/openafs/download/suse-7.2/SOURCES/openafs-killafs
+
+if [ $# -eq 1 ]; then
+	SIGNAL=$1
+else
+	SIGNAL=TERM
+fi
+
+if [ ! -x /usr/sbin/lsof ]; then
+	exit
+fi
+
+PIDS=`/usr/sbin/lsof -Fp /afs | /bin/sed -e 's/p//'`
+
+
+if [ "x" != "x$PIDS" ]; then
+	/bin/kill -$SIGNAL $PIDS >/dev/null 2>&1
+	sleep 5
+fi

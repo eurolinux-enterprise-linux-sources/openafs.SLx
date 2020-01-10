@@ -1,0 +1,2 @@
+>hepix.org              #HEPiX Exchange Cell
+193.204.5.138                   #hepix.caspur.it

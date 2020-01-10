@@ -1,0 +1,262 @@
+commit 2161e741da94b3ceb60cbd57a78643dd4169dfb7
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Mon Nov 7 14:16:50 2016 -0500
+
+    dir: do not leak contents of deleted directory entries
+    
+    Deleting an AFS directory entry (afs_dir_Delete) merely removes the
+    entry logically by updating the allocation map and hash table.  However,
+    the entry itself remains on disk - that is, both the cache manager's
+    cache partition and the fileserver's vice partitions.
+    
+    This constitutes a leak of directory entry information, including the
+    object's name and MKfid (vnode and uniqueid).  This leaked information
+    is also visible on the wire during FetchData requests and volume
+    operations.
+    
+    Modify afs_dir_Delete to clear the contents of deleted directory
+    entries.
+    
+    Patchset notes:
+    This commit only prevents leaks for newly deleted entries.  Another
+    commit in this patchset prevents leaks of partial object names upon
+    reuse of pre-existing deleted entries.  A third commit in this
+    patchset prevents yet another kind of directory entry leak, when
+    internal buffers are reused to create or enlarge existing directories.
+    All three patches are required to prevent new leaks.  Two additional
+    salvager patches are also included to assist administrators in the
+    cleanup of pre-existing leaks.
+    
+    [kaduk@mit.edu: style nit for sizeof() argument]
+    
+    Reviewed-on: https://gerrit.openafs.org/12460
+    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
+    Tested-by: Mark Vitale <mvitale@sinenomine.net>
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Benjamin Kaduk <kaduk@mit.edu>
+    (cherry picked from commit f591f6fae3d8b8d44140ca64e53bad840aeeeba0)
+    
+    Change-Id: I41f76649f4bed609793b944db32c5ae62aa07458
+    Reviewed-on: https://gerrit.openafs.org/12465
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
+    Tested-by: BuildBot <buildbot@rampaginggeek.com>
+    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
+
+commit 27515016cf92d0456b2a6e8a90758a02729f7407
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Sun Nov 6 23:29:22 2016 -0600
+
+    afs: do not leak stale data in buffers
+    
+    Similar to the previous commit, zero out the buffer when fetching
+    a new slot, to avoid the possibility of leaving stale data in
+    a reused buffer.
+    
+    We are not supposed to write such stale data back to a fileserver,
+    but this is an extra precaution in case of bugs elsewhere -- memset
+    is not as expensive as it was in the 1980s.
+    
+    Reviewed-on: https://gerrit.openafs.org/12459
+    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
+    Tested-by: Mark Vitale <mvitale@sinenomine.net>
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Benjamin Kaduk <kaduk@mit.edu>
+    (cherry picked from commit a26c5054ee501ec65db3104f6a6a0fef634d9ea7)
+    
+    Change-Id: Id60559ed84581e2f6a50cd4313f64780b8a0bafd
+    Reviewed-on: https://gerrit.openafs.org/12464
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
+    Tested-by: Mark Vitale <mvitale@sinenomine.net>
+    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
+
+commit 82b681f594c84cd7f3d1874ae4506486e73aa496
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Wed Nov 30 10:55:55 2016 -0600
+
+    Make OpenAFS 1.6.20
+    
+    Update version strings for the 1.6.20 security release.
+    
+    Change-Id: I7f5ffa5e20173d399ed79dfb6358882caf05e27e
+    Reviewed-on: https://gerrit.openafs.org/12467
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
+    Tested-by: Stephan Wiesand <stephan.wiesand@desy.de>
+
+commit 3fd2ed164658d1541fa3a52667effc66b6e2ee60
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Wed Nov 30 09:28:18 2016 -0600
+
+    Update NEWS for 1.6.20
+    
+    Change-Id: Id5bfbf5013f1ce7879473a1d40fea535314f6370
+    Reviewed-on: https://gerrit.openafs.org/12466
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
+    Tested-by: Stephan Wiesand <stephan.wiesand@desy.de>
+
+commit f234083a324085ebc7a2509b5878da5a3d10b956
+Author: Mark Vitale <mvitale@sinenomine.net>
+Date:   Fri May 13 00:01:31 2016 -0400
+
+    dir: fileserver leaks names of file and directories
+    
+    Summary:
+    Due to incomplete initialization or clearing of reused memory,
+    fileserver directory objects are likely to contain "dead" directory
+    entry information.  These extraneous entries are not active - that is,
+    they are logically invisible to the fileserver and client.  However,
+    they are physically visible on the fileserver vice partition, on the
+    wire in FetchData replies, and on the client cache partition.  This
+    constitutes a leak of directory information.
+    
+    Characterization:
+    There are three different kinds of "dead" residual directory entry
+    leaks, each with a different cause:
+    
+    1. There may be partial name data after the null terminator in a live
+    directory entry.   This happens when a previously used directory entry
+    becomes free, then is reused for a directory entry with a shorter name.
+    This may be addressed in a future commit.
+    
+    2. "Dead" directory entries are left uncleared after an object is
+    deleted or renamed.  This may be addressed in a future commit.
+    
+    3. Residual directory entries may be inadvertently picked up when a new
+    directory is created or an existing directory is extended by a 2kiBi
+    page.  This is the most severe problem and is addressed by this commit.
+    
+    This third kind of leak is the most severe because the leaked
+    directory information may be from _any_ other directory residing on the
+    fileserver, even if the current user is not authorized to see that
+    directory.
+    
+    Root cause:
+    The fileserver's directory/buffer package shares a pool of directory
+    page buffers among all fileserver threads for both directory reads and
+    directory writes.  When the fileserver creates a new directory or
+    extends an existing one, it uses any available unlocked buffer in the
+    pool.  This buffer is likely to contain another directory page recently
+    read or written by the fileserver.  Unfortunately the fileserver only
+    initializes the page header fields (and the first two "dot" and "dotdot"
+    entries in the case of a new directory).  Any residual entries in the
+    rest of the directory page are now logically "dead", but still
+    physically present in the directory.  They can easily be seen on the
+    vice partition, on the wire in a FetchData reply, and on the cache
+    partition.
+    
+    Note:
+    The directory/buffer package used by the fileserver is also used by the
+    salvager and the volserver.  Therefore, salvager activity may also leak
+    directory information to a certain extent.   The volserver vos split
+    command may also contribute to leaks.  Any volserver operation that
+    creates volumes (create, move, copy, restore, release) may also have
+    insignificant leaks.  These less significant leaks are addressed by this
+    commit as well.
+    
+    Exploits:
+    Any AFS user authorized to read directories may passively exploit this
+    leak by capturing wire traffic or examining his local cache as he/she
+    performs authorized reads on existing directories.  Any leaked data will
+    be for other directories the fileserver had in the buffer pool at the
+    time the authorized directories were created or extended.
+    
+    Any AFS user authorized to write a new directory may actively exploit
+    this leak by creating a new directory, flushing cache, then re-reading
+    the newly created directory.  Any leaked data will be for other
+    directories the fileserver had in the buffer pool within the last few
+    seconds.  In this way an authorized user may sample current fileserver
+    directory buffer contents for as long as he/she desires, without being
+    detected.
+    
+    Directories already containing leaked data may themselves be leaked,
+    leading to multiple layers of leaked data propagating with every new or
+    extended directory.
+    
+    The names of files and directories are the most obvious source of
+    information in this leak, but the FID vnode and uniqueid are leaked as
+    well.  Careful examination of the sequences of leaked vnode numbers and
+    uniqueids may allow an attacker to:
+    - Discern each layer of old directories by observing breaks in
+      consecutive runs of vnode and/or uniqueid numbers.
+    - Infer which objects may reside on the same volume.
+    - Discover the order in which objects were created (vnode) or modified
+      (uniqueid).
+    - Know whether an object is a file (even vnode) or a directory (odd
+      vnode).
+    
+    Prevent new leaks by always clearing a pool buffer before using it to
+    create or extend a directory.
+    
+    Existing leaks on the fileserver vice partitions may be addressed in a
+    future commit.
+    
+    Reviewed-on: https://gerrit.openafs.org/12458
+    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
+    Tested-by: Mark Vitale <mvitale@sinenomine.net>
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Benjamin Kaduk <kaduk@mit.edu>
+    (cherry picked from commit 70065cb1831dbcfd698c8fee216e33511a314904)
+    
+    Change-Id: Ifa9d9266368ed3775898b7628ca980edcb230356
+    Reviewed-on: https://gerrit.openafs.org/12463
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Tested-by: BuildBot <buildbot@rampaginggeek.com>
+    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
+
+commit 30fbf5a5cc5dfdefa0ad64b488be22b9375e5b09
+Author: Benjamin Kaduk <kaduk@mit.edu>
+Date:   Sun Nov 6 15:06:02 2016 -0600
+
+    bos: allow salvage -salvagedirs with -all
+    
+    Allow the -salvagedirs option on bos salvage when invoked with the -all
+    option to salvage the whole server.   The -salvagedirs -all options will
+    rebuild every directory on the server.
+    
+    Reviewed-on: https://gerrit.openafs.org/12457
+    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
+    Tested-by: Mark Vitale <mvitale@sinenomine.net>
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Tested-by: BuildBot <buildbot@rampaginggeek.com>
+    Reviewed-by: Benjamin Kaduk <kaduk@mit.edu>
+    (cherry picked from commit 1637c4d7c1ce407390f65509a3a1c764a0c06aa6)
+    
+    [not actually cherry picked, but is the equivalent functionality]
+    
+    Change-Id: I3978a5c4a704e0a0f2aab1cfad75573c16496a4d
+    Reviewed-on: https://gerrit.openafs.org/12462
+    Tested-by: BuildBot <buildbot@rampaginggeek.com>
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>
+
+commit d5f05cce7ffc61a3340509f94388421e3cf2522d
+Author: Michael Meffie <mmeffie@sinenomine.net>
+Date:   Sun Nov 6 14:31:22 2016 -0600
+
+    dafs: honor salvageserver -salvagedirs
+    
+    Do not ignore the -salvagedirs option when given to the salvageserver.
+    When the salvageserver is running with this option, all directories will
+    be rebuilt by salvages spawned by the dafs salvageserver, including all
+    demand attach salvages and salvages of individual volumes initiated by
+    bos salvage.
+    
+    This does not affect the whole partition salvages initiated by bos
+    salvage -all.
+    
+    Reviewed-on: https://gerrit.openafs.org/12456
+    Reviewed-by: Mark Vitale <mvitale@sinenomine.net>
+    Tested-by: Mark Vitale <mvitale@sinenomine.net>
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Tested-by: BuildBot <buildbot@rampaginggeek.com>
+    Reviewed-by: Benjamin Kaduk <kaduk@mit.edu>
+    (cherry picked from commit 9e66234951cca3ca77e94ab431f739e85017a23a)
+    
+    Change-Id: I121299a5524cb46a519aead7818b0a7bd2fd4f69
+    Reviewed-on: https://gerrit.openafs.org/12461
+    Tested-by: BuildBot <buildbot@rampaginggeek.com>
+    Reviewed-by: Michael Meffie <mmeffie@sinenomine.net>
+    Reviewed-by: Stephan Wiesand <stephan.wiesand@desy.de>

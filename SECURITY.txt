@@ -1,0 +1,13 @@
+Updating to this build is *not* sufficient to protect a site from being
+compromised by a brute force attack on the cell's DES encrypted service key.
+
+Additional configuration is required: The cell needs to be rekeyed, using
+strong encryption types for the AFS service principal, and the keys extracted
+into a krb5 keytab named rxkad.keytab in /usr/afs/etc . In addition, the old
+KeyFile must be removed.
+
+The servers must be restarted in order to pick up the new code and keys.
+
+Detailed documentation of all these steps was made available with the 1.6.5
+release and is available from http://www.openafs.org .
+

@@ -1,0 +1,125 @@
+#! /bin/sh
+#
+# afs-server	Start/Stop the OpenAFS server
+# 
+# chkconfig: 345 59 21
+# description:  OpenAFS is a distributed filesystem.
+
+. /etc/rc.d/init.d/functions
+
+SYSCNF=/etc/sysconfig/afs
+GENCNF=/etc/sysconfig/.afs-server.generated
+[ -f $SYSCNF ] && . $SYSCNF
+
+on_network() {
+    ADDRS=`LANG=C ifconfig -a | grep 'inet' | grep -v 127.0.0.1 | wc -l`
+    if [ "$ADDRS" = "" ]; then
+	echo afs: No interfaces with IP address 1>&2
+	return 1
+    elif [ $ADDRS = 0 ]; then
+	echo afs: No interfaces with IP address 1>&2
+	return 1
+    fi
+    return 0
+}
+
+rhstatus() {
+    status bosserver
+    RETVAL=$?
+}
+
+RETVAL=0
+
+start() {
+    echo -n "Starting AFS server..... "
+    rhstatus >/dev/null 2>&1
+    if [ $RETVAL -ne  0 ]; then
+	on_network || {
+	    echo -n "no network"
+	    failure
+	    echo
+	    exit 1
+	}
+	/usr/afs/bin/bosserver ${BOSSERVER_OPTIONS} && {
+	    touch /var/lock/subsys/afs-server
+	    RETVAL=0
+	    success
+	    echo
+	} || {
+	    RETVAL=$?
+	    failure
+	    echo
+	}
+    else
+	echo -n "already running"
+	RETVAL=1
+	failure
+	echo
+    fi
+}
+
+stop () {
+    echo -n "Stopping AFS server..... "
+    rhstatus >/dev/null 2>&1
+    if [ $RETVAL -eq 0 ]; then
+  	# Stop AFS
+	/usr/bin/bos shutdown localhost -localauth -wait
+	RETVAL=$?
+	killall -HUP bosserver
+	
+	[ $RETVAL -eq 0 ] && success || failure
+	echo
+    else
+	echo -n "not running"
+	failure
+	echo
+	RETVAL=1
+    fi
+    rm -f /var/lock/subsys/afs-server
+}
+
+prepare() {
+    # we're called like this from the afs-server unit file
+    on_network || exit 1
+
+    rm -f ${GENCNF} || exit 1
+    echo "# created by $0 from $SYSCNF - do not edit directly" > ${GENCNF} || exit 1
+    echo BOSSERVER_OPTIONS=\"${BOSSERVER_OPTIONS}\" >> ${GENCNF} || exit 1
+}
+
+case "$1" in 
+    start)
+	start
+	;;
+
+    stop)
+	stop
+	;;
+
+    status)
+	rhstatus
+	;;
+
+    restart)
+	# Restart AFS
+	stop
+	start
+	;;
+
+    condrestart)
+        if [ -f /var/lock/subsys/afs-server ]; then
+	    stop
+	    start
+	fi
+        ;;
+
+    prepare)
+	prepare
+	;;
+
+    *)
+	echo Usage: 'afs <start|stop|status|restart|condrestart>'
+	RETVAL=1
+esac
+
+exit $RETVAL

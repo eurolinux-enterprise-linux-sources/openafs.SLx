@@ -1,0 +1,339 @@
+#! /bin/sh
+#
+# afs	Start/Stop the OpenAFS client
+# 
+# chkconfig: 345 60 20
+# description:  OpenAFS is a distributed filesystem.
+
+. /etc/rc.d/init.d/functions
+
+SYSCNF=/etc/sysconfig/afs
+GENCNF=/etc/sysconfig/.afs.generated
+[ -f $SYSCNF ] && . $SYSCNF
+
+CACHEINFO=${CACHEINFO:-/usr/vice/etc/cacheinfo}
+CACHE=${CACHEDIR:-/usr/vice/cache}
+AFS=${AFSDIR:-/afs}
+
+# is_on returns 1 if value of arg is "on"
+is_on() {
+    if  test "$1" = "on" ; then return 0
+    else return 1
+    fi
+}
+
+runcmd() {
+    echo -n "$1 "
+    shift
+    if [ "$BOOTUP" = "color" ]; then
+	$* && echo_success || echo_failure
+    else
+	$*
+    fi
+    echo
+}
+
+on_network() {
+    ADDRS=`LANG=C ifconfig -a | grep 'inet' | grep -v 127.0.0.1 | wc -l`
+    if [ "$ADDRS" = "" ]; then
+	echo afs: No interfaces with IP address 1>&2
+	return 1
+    elif [ $ADDRS = 0 ]; then
+	echo afs: No interfaces with IP address 1>&2
+	return 1
+    fi
+    #*******************************************
+    # Begin of modifications done by Troy Dawson
+    #*******************************************	
+    FOUNDSERVER="no"
+    FINISHED="no"
+    cat /usr/vice/etc/CellServDB | {
+	while [ "$FINISHED" = "no" ] 
+	  do
+	  read line || break;
+	  CHAR="$(echo $line | cut -c1)"
+	  if [ "$CHAR" = ">" ] ; then
+	      if [ "$FOUNDSERVER" = "yes" ] ; then
+		  FINISHED="yes"
+	      else
+		  LINECELL="$(echo $line | cut -d' ' -f1 | cut -d'>' -f2)"
+		  if [ "$CELL" = "$LINECELL" ] ; then
+		      FOUNDSERVER="yes"
+		  fi
+	      fi
+	  else
+	      if [ "$FOUNDSERVER" = "yes" ] ; then
+		  if [ "$line" = "" ] ; then
+		      FINISHED="yes"
+		  else
+		      SERVER="$(echo $line | cut -d' ' -f1)"
+		      /usr/sbin/rxdebug -servers $SERVER -port 7002 2>&1 > /dev/null
+		      if [ $? -eq 0 ] ; then
+			  return 0
+		      fi
+		      echo "afs: Unable to reach $SERVER ..." 1>&2
+		  fi
+	      fi
+	  fi
+	done
+	echo afs: Unable to reach AFS servers. Not starting. 1>&2
+	return 1
+    }
+    #*******************************************
+    # End of modifications done by Troy Dawson
+    #*******************************************    
+    return 0
+}
+
+generate_cacheinfo() {
+    if [ "$CACHESIZE" = "AUTOMATIC" ]; then
+	LINE=`df -Pk $CACHE | tail -1`
+	PART=`echo $LINE | awk '{print $NF}'`
+	if [ "$PART" != "$CACHE" ]; then
+	    echo "$CACHE is not a separate partition" 1>&2
+	    echo "you have to change the cachesize in $SYSCNF by hand" 1>&2
+	    echo "AFS will be started with the default cache size of 100 MB." 1>&2
+	    CACHESIZE=100000
+	else
+	    PARTSIZE=`echo $LINE | awk '{print $2}'`
+	    if grep -q "$CACHE ext3" /proc/mounts ; then
+		PARTSIZE=`expr $PARTSIZE - 32768`
+	    fi
+	    CACHESIZE=`echo $PARTSIZE | awk '{printf "%d",int(($1*.7)/1000)*1000}'`
+	fi
+    fi
+    if [ "x$CACHESIZE" != "x" ]; then
+	echo $AFS:$CACHE:$CACHESIZE >$CACHEINFO
+	chmod 0644 $CACHEINFO
+    else
+	CACHESIZE=`awk -F: '{print $3}' < $CACHEINFO`
+    fi
+}
+
+# added this function when we got bitten by EXT4 on 32-bit EL 6.3
+purge_cache() {
+    # purge while running = panic!
+    if [ -f /var/lock/subsys/afs ]; then
+        echo "Can't purge cache while AFS is running" 1>&2
+        return 1
+    fi
+    if grep -q '^AFS ' /proc/mounts; then
+        echo "Can't purge cache while AFS is running" 1>&2
+        return 1
+    fi
+
+    # planning to wipe a directory, make sure it is defined
+    if [ "x$CACHE" = 'x' ]; then
+        echo "CACHE not defined" 1>&2
+        return 1
+    fi
+
+    # At this point $CACHE is defined, so wipe it
+    rm -rf $CACHE/D* $CACHE/*Items
+}
+
+choose_afsdoptions() {
+    # autotuning in afsd should eventually be used instead;
+    # alas, it is still broken at least on x86_64 in 1.4.2
+
+    if [ -z "$OPTIONS" -o "$OPTIONS" = "AUTOMATIC" ]; then
+        if [ $CACHESIZE -lt 131072 ]; then
+            OPTIONS=$SMALL
+        elif [ $CACHESIZE -lt 524288 ]; then
+            OPTIONS=$MEDIUM
+        elif [ $CACHESIZE -lt 1048576 ]; then
+            OPTIONS=$LARGE
+        elif [ $CACHESIZE -lt 2097152 ]; then
+            OPTIONS=$XLARGE
+        else
+            OPTIONS=$XXLARGE
+        fi
+    fi
+
+    AFSD_OPTIONS="$OPTIONS $VERBOSE"
+    if is_on $ENABLE_AFSDB; then
+	AFSD_OPTIONS="$AFSD_OPTIONS -afsdb"
+    fi
+    if is_on $ENABLE_DYNROOT_SPARSE; then
+	AFSD_OPTIONS="$AFSD_OPTIONS -dynroot-sparse"
+	ENABLE_DYNROOT=0
+    fi
+    if is_on $ENABLE_DYNROOT; then
+	AFSD_OPTIONS="$AFSD_OPTIONS -dynroot"
+    fi
+    if is_on $ENABLE_FAKESTAT; then
+	AFSD_OPTIONS="$AFSD_OPTIONS -fakestat"
+    fi
+    if is_on $ENABLE_SETTIME; then
+	AFSD_OPTIONS="$AFSD_OPTIONS -settime"
+    fi
+}
+
+check_module() {
+    /sbin/lsmod | /bin/grep -q '^openafs[[:space:]]'
+    if [ $? -eq 0 ]; then
+	echo afs: Module openafs already loaded. Not starting. 1>&2
+	return 1
+    fi
+    /sbin/lsmod | /bin/grep -q '^libafs[[:space:]]'
+    if [ $? -eq 0 ]; then
+	echo afs: Module libafs already loaded. Not starting. 1>&2
+	return 1
+    fi
+    MOD=`/sbin/modprobe -nv openafs`
+    MOD=${MOD#* }
+    if [ ! -L "$MOD" ]; then
+	return 0
+    fi
+    MOD=`/bin/readlink -f "$MOD"`
+
+    KMINOR=`/bin/uname -r`
+    KMINOR=${KMINOR#*-}
+    KMINOR=${KMINOR%%.*}
+
+    MMINOR=${MOD#*-}
+    MMINOR=${MMINOR%%.*}
+    if [ "$KMINOR" -eq "$MMINOR" ]; then
+	return 0
+    fi
+
+    echo afs: Module was built for a different minor release kernel. Not starting. 1>&2
+    return 0
+}
+
+check_thiscell() {
+    CELL=
+    if [ -s /usr/vice/etc/ThisCell ] ; then
+	CELL="$(cat /usr/vice/etc/ThisCell)"
+	if [ -n "$CELL" ]; then
+	    grep -w -q -s ">$CELL" /usr/vice/etc/CellServDB
+	    if [ $? -ne 0 ] ; then
+		echo afs: $CELL from ThisCell is not in CellServDB.  Not starting. 1>&2
+		return 1
+	    fi
+	    return 0
+	fi
+    fi
+    CELL=`dnsdomainname`;
+    if [ $? -ne 0 -o -z "$CELL" ] ; then
+	echo afs: No cell defined. Trying to figure it out failed. Not starting. 1>&2
+	return 1
+    fi
+    grep -w -q -s ">$CELL" /usr/vice/etc/CellServDB
+    if [ $? -ne 0 ] ; then
+	echo afs: No cell defined. Trying to figure it out failed. Not starting. 1>&2
+	return 1
+    fi
+    echo "$CELL" > /usr/vice/etc/ThisCell && chmod 0644 /usr/vice/etc/ThisCell
+    if [ $? -ne 0 ] ; then
+	echo afs: No cell defined. Trying to configure "$CELL" failed. Not starting. 1>&2
+	return 1
+    fi
+    echo afs: Warning: No cell was defined. Autoconfigured "$CELL". 1>&2
+}
+
+rhstatus() {
+    status afsd
+}
+
+start() {
+    if [ ! -f /var/lock/subsys/afs ]; then
+	echo "Starting AFS client..... "
+
+	# Start AFS client
+	generate_cacheinfo
+	choose_afsdoptions
+	check_thiscell || exit 1
+	on_network || exit 1
+	check_module || exit 1
+
+  	# Load kernel extensions
+	if ! /sbin/modprobe openafs ; then
+	    echo Failed to load AFS client, not starting AFS services. 1>&2
+	    exit 1
+	fi
+
+	/usr/vice/etc/afsd ${AFSD_OPTIONS}
+	touch /var/lock/subsys/afs
+	$AFS_POST_INIT
+    fi
+}
+
+prepare() {
+    # we're called like this from the afs unit file
+
+    generate_cacheinfo
+    choose_afsdoptions
+    check_thiscell || exit 1
+    on_network || exit 1
+    check_module || exit 1
+
+    rm -f $GENCNF || exit 1
+    echo "# created by $0 from $SYSCNF - do not edit directly" > $GENCNF || exit 1
+    echo AFSD_OPTIONS=\"${AFSD_OPTIONS}\" >> $GENCNF || exit 1
+    echo AFS_POST_INIT=\"${AFS_POST_INIT}\" >> $GENCNF || exit 1
+}
+
+stop() {
+    if [ -f /var/lock/subsys/afs ]; then
+	# Stop AFS
+	echo "Stopping AFS client..... "
+
+	if [ -x /usr/vice/etc/killafs ] ; then
+	    runcmd "Sending all processes using /afs the TERM signal ..." /usr/vice/etc/killafs TERM
+	    runcmd "Sending all processes using /afs the KILL signal ..." /usr/vice/etc/killafs KILL
+	fi
+	umount /afs
+	/sbin/modprobe -r openafs
+
+	/sbin/lsmod | /bin/grep -q '^libafs[[:space:]]'
+	if [ $? -eq 0 ]; then
+	    /sbin/modprobe -r libafs
+	fi
+
+	rm -f /var/lock/subsys/afs
+    fi
+}
+
+case "$1" in 
+    start)
+	start
+	;;
+
+    stop)
+	stop
+	;;
+
+    restart)
+	# Restart AFS
+	stop
+	start
+	;;
+
+    status)
+        rhstatus
+        ;;
+
+    condrestart)
+        if [ -f /var/lock/subsys/afs ]; then
+	    stop
+	    start
+	fi
+        ;;
+
+    purgecache)
+        purge_cache
+        exit $?
+        ;;
+
+    prepare)
+	prepare
+	;;
+  *)
+	echo Usage: 'afs <start|stop|status|restart|condrestart|purgecache>'
+	exit 1
+esac
+
+exit 0
+
+action fool the Red Hat initscripts
